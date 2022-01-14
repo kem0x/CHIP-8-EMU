@@ -86,7 +86,7 @@ public:
         auto x = (opc & 0x0F00) >> 8;
         auto y = (opc & 0x00F0) >> 4;
         auto n = opc & 0x000F;
-
+        auto nn = opc & 0x00FF;
         auto nnn = opc & 0x0FFF;
         auto kk = opc & 0x00FF;
 
@@ -368,6 +368,16 @@ public:
                 break;
             case 0x1E:
                 // ADD I, Vx
+
+                if(I + V[x] > 0xFFF)
+                {
+                    V[0xF] = 1;
+                }
+                else
+                {
+                    V[0xF] = 0;
+                }
+                
                 I += V[x];
                 break;
             case 0x29:
