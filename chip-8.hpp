@@ -1,5 +1,4 @@
 #include "framework.h"
-#include "util.h"
 
 constexpr const uint8_t chip8_fontset[80] = {
     0xF0, 0x90, 0x90, 0x90, 0xF0, // 0
@@ -20,26 +19,62 @@ constexpr const uint8_t chip8_fontset[80] = {
     0xF0, 0x80, 0xF0, 0x80, 0x80  // F
 };
 
+constexpr const uint8_t keymap[16] = {
+    SDLK_x,
+    SDLK_1,
+    SDLK_2,
+    SDLK_3,
+    SDLK_q,
+    SDLK_w,
+    SDLK_e,
+    SDLK_a,
+    SDLK_s,
+    SDLK_d,
+    SDLK_z,
+    SDLK_c,
+    SDLK_4,
+    SDLK_r,
+    SDLK_f,
+    SDLK_v,
+};
+
 class Chip8
 {
     std::array<uint8_t, 4096> memory; // 4K memory
     std::array<uint8_t, 16> V;        // 16 8-bit general purpose registers
-    std::stack<uint16_t> stack;       // 16 16-bit stack
+    std::stack<uint16_t> stack;       // 16-bit stack
     uint16_t I = 0;                   // 16-bit index register
     uint16_t pc = 0x200;              // 16-bit program counter
     uint8_t delay_timer = 0;          // 8-bit delay timer
     uint8_t sound_timer = 0;          // 8-bit sound timer
-    std::array<uint8_t, 16> key;
 
 public:
-    std::array<uint8_t, 64 * 32> gfx; // 64x32 graphics
-    bool dirty = false;               // dirty flag
+    std::array<uint8_t, 16> key;          // 16-bit keypad
+    std::array<uint32_t, 64 * 32> screen; // 64x32 pixels
+    bool dirty = false;                   // dirty flag
+
+    std::vector<uint8_t> read_rom(const std::string &path)
+    {
+        std::ifstream file(path, std::ios::binary);
+        if (!file.is_open())
+        {
+            std::cout << "Failed to open file: " << path << std::endl;
+            return {};
+        }
+
+        std::vector<uint8_t> buffer;
+        buffer.resize(file.seekg(0, std::ios::end).tellg());
+        file.seekg(0, std::ios::beg);
+        file.read(reinterpret_cast<char *>(buffer.data()), buffer.size());
+        file.close();
+        return buffer;
+    }
 
     Chip8()
     {
         // Empty the memory
         memory.fill(0);
-        gfx.fill(0);
+        screen.fill(0);
         V.fill(0);
         key.fill(0);
 
@@ -49,7 +84,7 @@ public:
             memory[i] = chip8_fontset[i];
         }
 
-        auto rom = util::read_rom("E:\\source\\repos\\CHIP-8-EMU\\roms\\Pong.ch8");
+        auto rom = read_rom("E:\\source\\repos\\CHIP-8-EMU\\roms\\Tic-Tac-Toe [David Winter].ch8");
 
         if (rom.size() > 0)
         {
@@ -78,7 +113,7 @@ public:
         }
     }
 
-    void execute(uint16_t &opc)
+    void executeOpcode(uint16_t &opc)
     {
         pc += 2;
 
@@ -88,7 +123,6 @@ public:
         auto n = opc & 0x000F;
         auto nn = opc & 0x00FF;
         auto nnn = opc & 0x0FFF;
-        auto kk = opc & 0x00FF;
 
         switch (opc & 0xF000)
         {
@@ -98,7 +132,7 @@ public:
             {
             case 0x00E0:
                 // CLS
-                gfx.fill(0);
+                screen.fill(0);
                 dirty = true;
                 break;
             case 0x00EE:
@@ -128,7 +162,7 @@ public:
         case 0x3000:
         {
             // SE Vx, byte
-            if (V[x] == kk)
+            if (V[x] == nn)
             {
                 pc += 2;
             }
@@ -137,7 +171,7 @@ public:
         case 0x4000:
         {
             // SNE Vx, byte
-            if (V[x] != kk)
+            if (V[x] != nn)
             {
                 pc += 2;
             }
@@ -155,13 +189,13 @@ public:
         case 0x6000:
         {
             // LD Vx, byte
-            V[x] = kk;
+            V[x] = nn;
             break;
         }
         case 0x7000:
         {
             // ADD Vx, byte
-            V[x] += kk;
+            V[x] += nn;
             break;
         }
         case 0x8000:
@@ -280,13 +314,12 @@ public:
         case 0xC000:
         {
             // RND Vx, byte
-            V[x] = (rand() % 256) & kk;
+            V[x] = (rand() % 256) & nn;
             break;
         }
         case 0xD000:
         {
             // DRW Vx, Vy, nibble
-
             V[0xF] = 0;
 
             for (auto row = 0; row < n; row++)
@@ -297,12 +330,16 @@ public:
                 {
                     if ((sprite & (0x80 >> col)) != 0)
                     {
-                        if (gfx[(x + col + ((y + row) * 64))] == 1)
+                        auto i = V[x] + col + ((V[y] + row) * 64);
+
+                        if (screen[i] == 1)
                         {
                             V[0xF] = 1;
                         }
 
-                        gfx[x + col + ((y + row) * 64)] ^= 1;
+                        screen[i] ^= 1; // Flip
+
+                        screen[i] = (0x00FFFFFF * screen[i]) | 0xFF000000;
                     }
                 }
             }
@@ -339,7 +376,6 @@ public:
             case 0x0A:
             {
                 // LD Vx, K
-
                 bool key_pressed = false;
                 for (auto i = 0; i < 16; i++)
                 {
@@ -368,8 +404,7 @@ public:
                 break;
             case 0x1E:
                 // ADD I, Vx
-
-                if(I + V[x] > 0xFFF)
+                if (I + V[x] > 0xFFF)
                 {
                     V[0xF] = 1;
                 }
@@ -377,7 +412,7 @@ public:
                 {
                     V[0xF] = 0;
                 }
-                
+
                 I += V[x];
                 break;
             case 0x29:
@@ -420,10 +455,9 @@ public:
 
     void cycle()
     {
-
         uint16_t curOpcode = (memory[pc] << 8) | memory[pc + 1];
 
-        execute(curOpcode);
+        executeOpcode(curOpcode);
         updateTimers();
 
         // Play sound
