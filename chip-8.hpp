@@ -84,7 +84,7 @@ public:
             memory[i] = chip8_fontset[i];
         }
 
-        auto rom = read_rom("E:\\source\\repos\\CHIP-8-EMU\\roms\\Tic-Tac-Toe [David Winter].ch8");
+        auto rom = read_rom("E:\\source\\repos\\CHIP-8-EMU\\roms\\Pong.ch8");
 
         if (rom.size() > 0)
         {
@@ -332,14 +332,17 @@ public:
                     {
                         auto i = V[x] + col + ((V[y] + row) * 64);
 
-                        if (screen[i] == 1)
+                        if (i < screen.size())
                         {
-                            V[0xF] = 1;
+                            if (screen[i] == 1)
+                            {
+                                V[0xF] = 1;
+                            }
+
+                            screen[i] ^= 1; // Flip
+
+                            screen[i] = (0x00FFFFFF * screen[i]) | 0xFF000000;
                         }
-
-                        screen[i] ^= 1; // Flip
-
-                        screen[i] = (0x00FFFFFF * screen[i]) | 0xFF000000;
                     }
                 }
             }

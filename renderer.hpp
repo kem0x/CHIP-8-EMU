@@ -42,7 +42,7 @@ public:
                     }
                 }
             }
-            
+
             // Process keyup events
             if (event.type == SDL_KEYUP)
             {
